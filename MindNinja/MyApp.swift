@@ -202,6 +202,8 @@ struct NotesMenu: View {
             }
 
             Divider()
+            ShieldView()
+            Divider()
             Button("⚙️ " + tr("settings", language)) {
                 draftMinutes = intervalMinutes
                 showSettings.toggle()
