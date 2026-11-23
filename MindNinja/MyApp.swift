@@ -56,12 +56,13 @@ struct MindNinjaApp: App {
         #endif
     }
 
+    #if os(macOS)
+    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    #endif
+
     var body: some Scene {
         #if os(macOS)
-        MenuBarExtra("MindNinja", systemImage: "brain.head.profile") {
-            NotesMenu().modelContainer(container)
-        }
-        .menuBarExtraStyle(.window)
+        Settings { EmptyView() }      // the 🧠 icon + notch are made in AppDelegate (MainMenu.swift)
         #else
         WindowGroup { Text("MindNinja for iPhone – coming soon") }
         #endif

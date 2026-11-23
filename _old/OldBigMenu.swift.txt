@@ -1,0 +1,177 @@
+#if os(macOS)
+import SwiftUI
+import AppKit
+
+struct MainMenu: View {
+    @AppStorage("theme") private var theme = "light"
+    @AppStorage("autoScan") private var autoScan = true
+    @AppStorage("shieldOn") private var shieldOn = true
+    @State private var link = ""
+    @State private var result: [String]? = nil
+    @State private var checking = false
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 14) {
+
+            // LEFT: main functions
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 6) {
+                    Image(systemName: "brain.head.profile")
+                    Text("MindNinja").font(.headline)
+                }
+
+                // 1. Sticky note
+                Button { StickyNotes.shared.new() } label: {
+                    Label("New sticky note", systemImage: "note.text.badge.plus")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(.black)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color(red: 0.98, green: 0.80, blue: 0.20))
+
+                Divider()
+
+                // 2. Auto-scan
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Auto-scan").font(.subheadline.weight(.semibold))
+                        Text("Checks every new download")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        autoScan.toggle()
+                        shieldOn = true
+                        DownloadWatcher.shared.startIfEnabled()
+                    } label: {
+                        Text(autoScan ? "ON" : "OFF")
+                            .font(.caption.weight(.bold))
+                            .frame(width: 34)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .tint(autoScan ? .green : .gray)
+                }
+
+                // 3. Link scanner
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Link scanner").font(.subheadline.weight(.semibold))
+                    HStack(spacing: 6) {
+                        TextField("Paste a link…", text: $link)
+                            .textFieldStyle(.roundedBorder)
+                            .onSubmit(check)
+                        Button("Scan", action: check)
+                            .disabled(link.isEmpty || checking)
+                    }
+                    if checking {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Scanning…").font(.caption).foregroundStyle(.secondary)
+                        }
+                    } else if let r = result {
+                        resultBox(r)
+                    }
+                }
+            }
+            .frame(width: 250)
+
+            // RIGHT: theme switch + quit
+            VStack(spacing: 10) {
+                ThemeSwitch(isDark: Binding(
+                    get: { theme == "dark" },
+                    set: { newValue in
+                        theme = newValue ? "dark" : "light"
+                        applyTheme(theme)
+                    }
+                ))
+                Spacer()
+                Button { NSApp.terminate(nil) } label: {
+                    Image(systemName: "power")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(.secondary)
+                .help("Quit MindNinja")
+            }
+        }
+        .padding(16)
+        .onAppear { shieldOn = true }
+    }
+
+    // Full result, every warning written out
+    @ViewBuilder
+    private func resultBox(_ r: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            if r.isEmpty {
+                Label("Looks safe, no warning signs found", systemImage: "checkmark.shield.fill")
+                    .foregroundStyle(.green)
+            } else {
+                Label("\(r.count) warning sign\(r.count == 1 ? "" : "s")", systemImage: "exclamationmark.shield.fill")
+                    .foregroundStyle(.orange)
+                    .font(.caption.weight(.semibold))
+                ForEach(r, id: \.self) { reason in
+                    Text("• " + reason)
+                }
+            }
+        }
+        .font(.caption)
+        .fixedSize(horizontal: false, vertical: true)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(8)
+        .background(
+            RoundedRectangle(cornerRadius: 8)
+                .fill((r.isEmpty ? Color.green : Color.orange).opacity(0.12))
+        )
+    }
+
+    private func check() {
+        guard !link.isEmpty, !checking else { return }
+        checking = true
+        result = nil
+        CatWalker.shared.walk()                       // cat walks while scanning
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) {
+            result = LinkChecker.check(link)
+            checking = false
+        }
+    }
+}
+
+// MARK: - Vertical light/dark switch
+struct ThemeSwitch: View {
+    @Binding var isDark: Bool
+
+    var body: some View {
+        ZStack(alignment: isDark ? .bottom : .top) {
+            Capsule()
+                .fill(isDark ? Color(white: 0.18) : Color(red: 0.75, green: 0.88, blue: 1.0))
+                .overlay(Capsule().stroke(Color.secondary.opacity(0.3), lineWidth: 1))
+
+            VStack {
+                Image(systemName: "sun.max.fill").opacity(isDark ? 0.5 : 0)
+                Spacer()
+                Image(systemName: "moon.fill").opacity(isDark ? 0 : 0.5)
+            }
+            .font(.system(size: 10))
+            .foregroundStyle(isDark ? Color.yellow : Color.indigo)
+            .padding(.vertical, 9)
+
+            Circle()
+                .fill(.white)
+                .shadow(radius: 1.5)
+                .overlay(
+                    Image(systemName: isDark ? "moon.fill" : "sun.max.fill")
+                        .font(.system(size: 11))
+                        .foregroundStyle(isDark ? Color.indigo : Color.orange)
+                )
+                .padding(3)
+                .frame(width: 30, height: 30)
+        }
+        .frame(width: 30, height: 64)
+        .contentShape(Capsule())
+        .onTapGesture {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) { isDark.toggle() }
+        }
+        .help(isDark ? "Dark mode" : "Light mode")
+    }
+}
+#endif

@@ -3,7 +3,7 @@ import SwiftUI
 import AppKit
 import Security
 
-struct ScanFinding: Identifiable {
+nonisolated struct ScanFinding: Identifiable {
     let id = UUID()
     let name: String
     let reason: String
@@ -11,7 +11,7 @@ struct ScanFinding: Identifiable {
 }
 
 // MARK: - Link checker (scam warning signs)
-enum LinkChecker {
+nonisolated enum LinkChecker {
     static let riskyTLDs = ["zip", "mov", "xyz", "top", "click", "gq", "tk", "ml", "cf", "work", "rest", "country", "kim"]
     static let brands = ["paypal", "apple", "google", "microsoft", "amazon", "facebook", "instagram",
                          "netflix", "revolut", "airbank", "csob", "ceskasporitelna", "moneta", "raiffeisen"]
@@ -47,7 +47,7 @@ enum LinkChecker {
 }
 
 // MARK: - File scanner
-enum FileScanner {
+nonisolated enum FileScanner {
     static let scriptExt = ["command", "sh", "scpt", "jar", "exe", "msi", "bat", "js", "vbs"]
     static let docExt = ["pdf", "doc", "docx", "jpg", "jpeg", "png", "txt", "xls", "xlsx", "mp4", "mp3"]
 
