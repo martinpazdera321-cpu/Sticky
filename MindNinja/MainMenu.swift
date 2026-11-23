@@ -327,7 +327,12 @@ struct NotchButton: View {
     @State private var hover = false
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            // tactile feedback: soft click sound + trackpad haptic
+            PaperSound.play("tap")
+            NSHapticFeedbackManager.defaultPerformer.perform(.levelChange, performanceTime: .now)
+            action()
+        } label: {
             Image(systemName: icon)
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundStyle(color)

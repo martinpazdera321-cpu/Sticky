@@ -317,9 +317,10 @@ struct StickyNoteView: View {
         )
         .overlay(Creases().opacity(creaseOpacity))                 // wrinkles appear
         .overlay(                                                             // ball shading
-            RadialGradient(colors: [.white.opacity(0.35), .clear, .black.opacity(0.35)],
-                           center: UnitPoint(x: 0.35, y: 0.3), startRadius: 0, endRadius: 160)
-                .opacity(stage == 3 ? 1 : 0)
+            Rectangle()
+                .fill(RadialGradient(colors: [Color.white.opacity(0.35), Color.clear, Color.black.opacity(0.35)],
+                                     center: UnitPoint(x: 0.35, y: 0.3), startRadius: 0, endRadius: 160))
+                .opacity(stage == 3 ? 1.0 : 0.0)
         )
         .clipShape(RoundedRectangle(cornerRadius: corner))
         .shadow(color: .black.opacity(0.25), radius: 6, x: 2, y: 4)
