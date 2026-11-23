@@ -33,7 +33,6 @@ enum LinkChecker {
         if labels.count > 4 { reasons.append("Unusually many subdomains") }
         if s.count > 150 { reasons.append("Very long link") }
 
-        // Fake brand check: e.g. paypal-login.xyz or apple.com.evil.ru
         let realName = labels.count >= 2 ? labels[labels.count - 2] : host
         for label in labels {
             for token in label.split(separator: "-").map(String.init) where brands.contains(token) {
@@ -47,37 +46,44 @@ enum LinkChecker {
     }
 }
 
-// MARK: - Downloads scanner
+// MARK: - File scanner
 enum FileScanner {
     static let scriptExt = ["command", "sh", "scpt", "jar", "exe", "msi", "bat", "js", "vbs"]
     static let docExt = ["pdf", "doc", "docx", "jpg", "jpeg", "png", "txt", "xls", "xlsx", "mp4", "mp3"]
 
-    static func scanDownloads() -> [ScanFinding] {
-        guard let dir = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first,
-              let files = try? FileManager.default.contentsOfDirectory(
-                at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles]) else {
-            return [ScanFinding(name: "Downloads", reason: "No access to the Downloads folder (check Step 1)", url: nil)]
-        }
-        var out: [ScanFinding] = []
-        for f in files {
-            let name = f.lastPathComponent
-            let ext = f.pathExtension.lowercased()
-            let parts = name.lowercased().split(separator: ".").map(String.init)
+    static var downloadsURL: URL? {
+        FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first?.resolvingSymlinksInPath()
+    }
 
-            // invoice.pdf.app → pretends to be a document
-            if parts.count >= 3, docExt.contains(parts[parts.count - 2]), !docExt.contains(ext) {
-                out.append(ScanFinding(name: name, reason: "Fake double extension, pretends to be .\(parts[parts.count - 2])", url: f))
-                continue
-            }
-            if ext == "app" && !isSigned(f) {
-                out.append(ScanFinding(name: name, reason: "App is not signed by a verified developer", url: f))
-                continue
-            }
-            if scriptExt.contains(ext) {
-                out.append(ScanFinding(name: name, reason: "Script or Windows program, only open if you trust the source", url: f))
-            }
+    static func listFiles() -> [URL]? {
+        guard let dir = downloadsURL else { return nil }
+        return try? FileManager.default.contentsOfDirectory(
+            at: dir, includingPropertiesForKeys: nil, options: [.skipsHiddenFiles])
+    }
+
+    /// Checks one file. Returns a finding if it looks dangerous, nil if OK.
+    static func check(_ f: URL) -> ScanFinding? {
+        let name = f.lastPathComponent
+        let ext = f.pathExtension.lowercased()
+        let parts = name.lowercased().split(separator: ".").map(String.init)
+
+        if parts.count >= 3, docExt.contains(parts[parts.count - 2]), !docExt.contains(ext) {
+            return ScanFinding(name: name, reason: "Fake double extension, pretends to be .\(parts[parts.count - 2])", url: f)
         }
-        return out
+        if ext == "app" && !isSigned(f) {
+            return ScanFinding(name: name, reason: "App is not signed by a verified developer", url: f)
+        }
+        if scriptExt.contains(ext) {
+            return ScanFinding(name: name, reason: "Script or Windows program, only open if you trust the source", url: f)
+        }
+        return nil
+    }
+
+    static func scanDownloads() -> [ScanFinding] {
+        guard let files = listFiles() else {
+            return [ScanFinding(name: "Downloads", reason: "No access to the Downloads folder (check app permissions)", url: nil)]
+        }
+        return files.compactMap { check($0) }
     }
 
     static func isSigned(_ url: URL) -> Bool {
@@ -87,9 +93,82 @@ enum FileScanner {
     }
 }
 
+// MARK: - Auto-scan: watches the Downloads folder
+final class DownloadWatcher {
+    static let shared = DownloadWatcher()
+    private var source: DispatchSourceFileSystemObject?
+    private var fd: Int32 = -1
+    private var known: Set<String> = []
+    private var pending: DispatchWorkItem?
+    private let ignoredExt = ["crdownload", "download", "part", "tmp"]   // still downloading
+
+    /// Starts or stops depending on the switches in the menu
+    func startIfEnabled() {
+        let shieldOn = UserDefaults.standard.object(forKey: "shieldOn") as? Bool ?? true
+        let autoScan = UserDefaults.standard.object(forKey: "autoScan") as? Bool ?? true
+        if shieldOn && autoScan { start() } else { stop() }
+    }
+
+    private func start() {
+        guard source == nil, let dir = FileScanner.downloadsURL else { return }
+        known = Set((FileScanner.listFiles() ?? []).map { $0.lastPathComponent })
+        fd = open(dir.path, O_EVTONLY)
+        guard fd >= 0 else { return }
+        let s = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: .write, queue: .main)
+        s.setEventHandler { [weak self] in self?.folderChanged() }
+        s.setCancelHandler { [weak self] in
+            if let fd = self?.fd, fd >= 0 { close(fd) }
+            self?.fd = -1
+        }
+        s.resume()
+        source = s
+    }
+
+    private func stop() {
+        source?.cancel()
+        source = nil
+    }
+
+    private func folderChanged() {
+        // wait 2 seconds so the download can finish
+        pending?.cancel()
+        let work = DispatchWorkItem { [weak self] in self?.checkNewFiles() }
+        pending = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
+    }
+
+    private func checkNewFiles() {
+        let files = FileScanner.listFiles() ?? []
+        let newFiles = files.filter {
+            !known.contains($0.lastPathComponent) && !ignoredExt.contains($0.pathExtension.lowercased())
+        }
+        known = Set(files.map { $0.lastPathComponent })
+        guard !newFiles.isEmpty else { return }
+
+        CatWalker.shared.walk()                       // cat walks = scanning
+        for f in newFiles {
+            if let finding = FileScanner.check(f) { warn(finding) }
+        }
+    }
+
+    private func warn(_ f: ScanFinding) {
+        NSApp.activate(ignoringOtherApps: true)
+        let alert = NSAlert()
+        alert.alertStyle = .critical
+        alert.messageText = "🛡️ MindNinja Shield warning"
+        alert.informativeText = "\(f.name)\n\n\(f.reason)"
+        alert.addButton(withTitle: "Move to Trash")
+        alert.addButton(withTitle: "Keep")
+        if alert.runModal() == .alertFirstButtonReturn, let u = f.url {
+            try? FileManager.default.trashItem(at: u, resultingItemURL: nil)
+        }
+    }
+}
+
 // MARK: - Shield panel in the menu
 struct ShieldView: View {
     @AppStorage("shieldOn") private var shieldOn = true
+    @AppStorage("autoScan") private var autoScan = true
     @State private var link = ""
     @State private var linkResult: [String]? = nil
     @State private var findings: [ScanFinding] = []
@@ -102,6 +181,10 @@ struct ShieldView: View {
                 .toggleStyle(.switch)
 
             if shieldOn {
+                Toggle("Auto-scan new downloads", isOn: $autoScan)
+                    .toggleStyle(.switch)
+                    .controlSize(.small)
+
                 // Link check
                 HStack {
                     TextField("Paste a link to check…", text: $link)
@@ -119,7 +202,7 @@ struct ShieldView: View {
                     }
                 }
 
-                // Downloads scan
+                // Manual scan
                 Button(scanning ? "🐈‍⬛ Scanning…" : "🔍 Scan Downloads") { scan() }
                     .disabled(scanning)
 
@@ -146,6 +229,8 @@ struct ShieldView: View {
                 }
             }
         }
+        .onChange(of: shieldOn) { _, _ in DownloadWatcher.shared.startIfEnabled() }
+        .onChange(of: autoScan) { _, _ in DownloadWatcher.shared.startIfEnabled() }
     }
 
     private func checkLink() {
@@ -156,13 +241,13 @@ struct ShieldView: View {
     private func scan() {
         scanning = true
         scanned = false
-        CatWalker.shared.startScanning()          // cat walks while scanning
+        CatWalker.shared.startScanning()
         Task {
             try? await Task.sleep(for: .seconds(4))
             findings = FileScanner.scanDownloads()
             scanning = false
             scanned = true
-            CatWalker.shared.stopScanning()       // cat finishes and leaves
+            CatWalker.shared.stopScanning()
         }
     }
 }

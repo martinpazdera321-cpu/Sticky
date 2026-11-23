@@ -52,6 +52,7 @@ struct MindNinjaApp: App {
         container = try! ModelContainer(for: Note.self)
         #if os(macOS)
         PopupController.shared.start(container: container)
+        DownloadWatcher.shared.startIfEnabled()
         #endif
     }
 
@@ -182,6 +183,7 @@ struct NotesMenu: View {
         VStack(alignment: .leading, spacing: 10) {
             Button("✏️ " + tr("newNote", language)) { PopupController.shared.show() }
             Button("🐈 Walk cat") { CatWalker.shared.walk() }
+            Button("📝 Sticky note") { StickyNotes.shared.new() }
             Divider()
 
             if notes.isEmpty {
