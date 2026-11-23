@@ -9,6 +9,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Menu-bar-only app (no Dock icon). This is what lets the sticky notes
+        // stay on top of EVERY app, also full-screen Safari/Chrome and other desktops.
+        NSApp.setActivationPolicy(.accessory)
+
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         item.button?.image = NSImage(systemSymbolName: "brain.head.profile", accessibilityDescription: "Sticky")
         item.button?.target = self
@@ -307,6 +311,10 @@ struct SettingsPanel: View {
             // Footer
             HStack {
                 Text("Version \(version)")
+                Spacer()
+                Button("Quit Sticky") { NSApp.terminate(nil) }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(.secondary)
                 Spacer()
                 Text("© 2026 Martin Pazdera")
             }

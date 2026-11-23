@@ -110,6 +110,8 @@ final class StickyNotes {
         p.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]  // every desktop, also full screen
         p.isReleasedWhenClosed = false
         p.hidesOnDeactivate = false                             // DON'T hide when you click another app
+        p.isFloatingPanel = true
+        p.canHide = false                                       // "Hide others" (⌥⌘H) can't hide it either
 
         let ref = WindowRef()
         ref.window = p
