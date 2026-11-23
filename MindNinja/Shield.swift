@@ -155,7 +155,7 @@ final class DownloadWatcher {
         NSApp.activate(ignoringOtherApps: true)
         let alert = NSAlert()
         alert.alertStyle = .critical
-        alert.messageText = "🛡️ MindNinja Shield warning"
+        alert.messageText = "🛡️ Sticky Shield warning"
         alert.informativeText = "\(f.name)\n\n\(f.reason)"
         alert.addButton(withTitle: "Move to Trash")
         alert.addButton(withTitle: "Keep")

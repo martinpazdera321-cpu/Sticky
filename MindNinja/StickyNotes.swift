@@ -204,7 +204,7 @@ final class StickyNotes {
             w.animator().alphaValue = 0
         }, completionHandler: { [weak self] in
             w.close()
-            NSSound(named: "Bottle")?.play()
+            PaperSound.play("toss")
             withAnimation(.spring(response: 0.25, dampingFraction: 0.5)) { self?.bin.hot = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { self?.hideBin() }
         })
@@ -228,12 +228,45 @@ struct BinView: View {
     }
 }
 
+// MARK: - Paper sounds (Sounds/crumple.wav, Sounds/toss.wav)
+enum PaperSound {
+    private static var playing: [NSSound] = []
+    static func play(_ name: String) {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "wav"),
+              let sound = NSSound(contentsOf: url, byReference: true) else { return }
+        playing.append(sound)
+        if playing.count > 6 { playing.removeFirst() }
+        sound.play()
+    }
+}
+
+// MARK: - Crease lines drawn on the paper while it crumples
+struct Creases: View {
+    private let lines: [(CGFloat, CGFloat, CGFloat, CGFloat)] = [
+        (0.10, 0.20, 0.62, 0.48), (0.30, 0.92, 0.80, 0.30), (0.00, 0.60, 0.50, 0.78),
+        (0.55, 0.05, 0.92, 0.70), (0.20, 0.42, 0.46, 0.08), (0.60, 0.98, 1.00, 0.55),
+        (0.05, 0.95, 0.36, 0.55), (0.40, 0.55, 0.98, 0.20), (0.00, 0.30, 0.30, 0.00),
+    ]
+    var body: some View {
+        Canvas { ctx, size in
+            for l in lines {
+                var dark = Path()
+                dark.move(to: CGPoint(x: l.0 * size.width, y: l.1 * size.height))
+                dark.addLine(to: CGPoint(x: l.2 * size.width, y: l.3 * size.height))
+                ctx.stroke(dark, with: .color(.black.opacity(0.22)), lineWidth: 1.4)
+                ctx.stroke(dark.offsetBy(dx: 1.5, dy: 1.5), with: .color(.white.opacity(0.35)), lineWidth: 1)
+            }
+        }
+    }
+}
+
 // MARK: - The sticky note
 struct StickyNoteView: View {
     let ref: WindowRef
     @ObservedObject var model: StickyModel
 
-    @State private var crumpled = false
+    // 0 = normal, 1 = wrinkling, 2 = folding, 3 = paper ball
+    @State private var stage = 0
     @State private var startOrigin: NSPoint?
     @State private var startMouse: NSPoint?
     @FocusState private var focused: Bool
@@ -241,6 +274,13 @@ struct StickyNoteView: View {
     private var c: StickyColor {
         StickyNotes.palette[min(max(model.color, 0), StickyNotes.palette.count - 1)]
     }
+
+    private var scaleX: CGFloat  { [1, 0.88, 0.52, 0.19][stage] }
+    private var scaleY: CGFloat  { [1, 0.78, 0.48, 0.19][stage] }
+    private var angle: Double    { [-1.5, -9, 28, 320][stage] }
+    private var corner: CGFloat  { [3, 22, 70, 135][stage] }
+    private var textOpacity: Double   { [1.0, 0.45, 0.0, 0.0][stage] }
+    private var creaseOpacity: Double { [0.0, 0.6, 0.9, 1.0][stage] }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -269,16 +309,22 @@ struct StickyNoteView: View {
                 .scrollContentBackground(.hidden)
                 .padding(10)
                 .focused($focused)
-                .opacity(crumpled ? 0 : 1)
+                .opacity(textOpacity)
                 .onChange(of: model.text) { _, _ in StickyNotes.shared.save() }
         }
         .background(
             LinearGradient(colors: [c.paper, c.strip.opacity(0.9)], startPoint: .top, endPoint: .bottom)
         )
-        .clipShape(RoundedRectangle(cornerRadius: crumpled ? 130 : 3))     // becomes a ball
+        .overlay(Creases().opacity(creaseOpacity))                 // wrinkles appear
+        .overlay(                                                             // ball shading
+            RadialGradient(colors: [.white.opacity(0.35), .clear, .black.opacity(0.35)],
+                           center: UnitPoint(x: 0.35, y: 0.3), startRadius: 0, endRadius: 160)
+                .opacity(stage == 3 ? 1 : 0)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: corner))
         .shadow(color: .black.opacity(0.25), radius: 6, x: 2, y: 4)
-        .scaleEffect(crumpled ? 0.18 : 1)
-        .rotationEffect(.degrees(crumpled ? 540 : -1.5))                    // slight tilt, then spin
+        .scaleEffect(x: scaleX, y: scaleY)
+        .rotationEffect(.degrees(angle))
         .padding(14)
         .onAppear { if model.text.isEmpty { focused = true } }
     }
@@ -304,11 +350,18 @@ struct StickyNoteView: View {
             }
     }
 
+    // Paper crumples in 3 steps, then flies into the bin
     private func crumple() {
-        guard !crumpled else { return }
-        NSSound(named: "Tink")?.play()
-        withAnimation(.easeIn(duration: 0.45)) { crumpled = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) {
+        guard stage == 0 else { return }
+        PaperSound.play("crumple")
+        withAnimation(.easeIn(duration: 0.14)) { stage = 1 }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) {
+            withAnimation(.easeInOut(duration: 0.18)) { stage = 2 }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.32) {
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) { stage = 3 }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.62) {
             StickyNotes.shared.throwAway(model.id)
         }
     }

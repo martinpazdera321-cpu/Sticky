@@ -10,7 +10,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "brain.head.profile", accessibilityDescription: "MindNinja")
+        item.button?.image = NSImage(systemSymbolName: "brain.head.profile", accessibilityDescription: "Sticky")
         item.button?.target = self
         item.button?.action = #selector(toggleNotch)
         statusItem = item
@@ -261,13 +261,13 @@ struct SettingsPanel: View {
                 .foregroundStyle(.secondary)
                 Spacer()
                 Image(systemName: "brain.head.profile")
-                Text("MindNinja").font(.headline)
+                Text("Sticky").font(.headline)
                 Spacer()
                 Color.clear.frame(width: 13, height: 1)
             }
 
             // About
-            Text("Your little helper for quick ideas. Catch thoughts on sticky notes, and let the Shield check every new download for danger.")
+            Text("Sticky is your little paper helper. Catch quick ideas on sticky notes that stay on your screen, and let the Shield check every new download for danger.")
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -294,7 +294,7 @@ struct SettingsPanel: View {
             }
 
             // Open at login (so your sticky notes are always back)
-            Toggle("Open MindNinja at login", isOn: $openAtLogin)
+            Toggle("Open Sticky at login", isOn: $openAtLogin)
                 .toggleStyle(.switch)
                 .controlSize(.small)
                 .font(.subheadline)
